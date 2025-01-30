@@ -22,9 +22,9 @@ namespace infini
         IT_ASSERT(checkValid(graph));
     }
 
-    optional<vector<Shape>> TransposeObj::inferShape(const TensorVec &inputs)
+    optional<vector<Shape>> TransposeObj::inferShape(const TensorVec &inputs)  
     {
-        const auto A = inputs[0];
+        const auto A = inputs[0];  //为什么只转置一个Tensor呢？
         auto input_dim = A->getDims();  
         auto output_dim = input_dim;
         int rank = A->getRank();
@@ -40,7 +40,6 @@ namespace infini
             output_dim[i] = input_dim[transposePermute[i]];
         }
         return {{output_dim}};
-        return std::nullopt;
     }
 
     std::string TransposeObj::toString() const

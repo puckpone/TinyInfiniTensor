@@ -15,3 +15,10 @@ PATH="/opt/homebrew/opt/make/libexec/gnubin:$PATH"
 # 1.29
 
 completed allocator
+
+
+# 1.30
+
+complete cast, clip, concat, matmul, transpose.
+
+TODO: learn the graph optimizing rule, through videos and ppts.

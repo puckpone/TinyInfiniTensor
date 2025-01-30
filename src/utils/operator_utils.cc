@@ -9,8 +9,20 @@ Shape infer_broadcast(const Shape &A, const Shape &B) {
     // TODO：对 A 和 B 进行双向广播，返回广播后的形状。
     // REF: https://github.com/onnx/onnx/blob/main/docs/Broadcasting.md
     // =================================== 作业 ===================================
-    
-    return {};
+    if(A.empty()) return B;
+    if(B.empty()) return A;
+    auto A_ = A;
+    auto B_ = B;
+    size_t rank = std::max(A_.size(), B_.size());
+    // 补全 A 和 B 的形状
+    while(A_.size() < rank) A_.insert(A_.begin(), 1);
+    while(B_.size() < rank) B_.insert(B_.begin(), 1);
+    Shape ret;
+    for(size_t i = 0; i < rank; ++i) {
+        IT_ASSERT(A_[i] == B_[i] || A_[i] == 1 || B_[i] == 1);
+        ret.push_back(std::max(A_[i], B_[i]));
+    }
+    return ret;
 }
 
 int get_real_axis(const int &axis, const int &rank) {
