@@ -1,8 +1,9 @@
 #include "core/graph.h"
+#include "operators/transpose.h"
+#include "operators/matmul.h"
 #include <algorithm>
 #include <numeric>
 #include <queue>
-
 namespace infini
 {
 
@@ -65,8 +66,8 @@ namespace infini
         {
             return true;
         }
-        std::vector<Operator> sorted;
-        std::unordered_set<OperatorObj *> flags;
+        std::vector<Operator> sorted; //拓扑排序后的结果
+        std::unordered_set<OperatorObj *> flags; //标记是否已经处理过
         sorted.reserve(ops.size());
         flags.reserve(ops.size());
         while (sorted.size() < ops.size())
@@ -75,9 +76,9 @@ namespace infini
             auto modified = false;
             for (auto const &op : ops)
             {
-                if (auto const &inputs = op->getInputs();
-                    flags.find(op.get()) == flags.end() &&
-                    std::all_of(inputs.begin(), inputs.end(),
+                if (auto const &inputs = op->getInputs();  //C++17特性 if (init-statement; condition)
+                    flags.find(op.get()) == flags.end() && //当前操作节点未被处理
+                    std::all_of(inputs.begin(), inputs.end(), //当前操作节点的所有输入节点都已经被处理
                                 [&flags](auto const &input)
                                 {
                                     auto ptr = input->getSource().get();
@@ -98,45 +99,68 @@ namespace infini
         return this->sorted = true;
     }
 
-    void GraphObj::optimize()
-    {
+    void GraphObj::optimize() {
         // =================================== 作业 ===================================
         // TODO: 设计一个算法来实现指定的图优化规则
         // 图优化规则如下：
         // 1. 去除冗余的算子（例如，两个相邻的算子都是 transpose 算子，且做的是相反的操作，可以将其全部删除）
         // 2. 合并算子（例如，矩阵乘算子中含有属性transA、transB，如果其输入存在transpose，且对最后两个维度做交换，就可以将transpose融入到矩阵乘算子的属性中去）
         // =================================== 作业 ===================================
-        //广度优先搜索遍历ops
-        std::queue<Operator> Q;
-        std::unordered_set<Operator> visited;
-        Q.push(ops[0]);
-        visited.insert(ops[0]);
-        while(!Q.empty())
-        {
-            auto cur = Q.front();
-            Q.pop();
-            if(cur->getPredecessors().size() == 1 && cur->getSuccessors().size() == 1)
-            {
-                auto pred = cur->getPredecessors()[0];
-                auto succ = cur->getSuccessors()[0];
-                if(pred->getOpType() == OpType::Transpose && succ->getOpType() == OpType::Transpose)
-                {
-                    //两个相邻的算子都是 transpose 算子，且做的是相反的操作，可以将其全部删除
-                    
-                    
-                }
-            }
-            for(auto &succ : cur->getSuccessors())
-            {
-                if(visited.find(succ) == visited.end()) //没访问过
-                {
-                    Q.push(succ);
-                    visited.insert(succ);
+        //1. 去除冗余的transpose
+        //广度优先搜索遍历ops ?  好像不需要？ 直接for遍历
+        for (auto it = ops.begin(); it != ops.end(); ++it) {
+            auto op = *it;
+            if (op->getSuccessors().size() == 1 &&
+                op->getOpType() == OpType::Transpose &&
+                op->getSuccessors()[0]->getOpType() == OpType::Transpose) {
+                
+                auto succ = op->getSuccessors()[0];
+
+                // 获取两个 Transpose 操作的轴排列
+                auto predTranspose = dynamic_cast<TransposeObj *>(op.get());
+                auto succTranspose = dynamic_cast<TransposeObj *>(succ.get());
+
+                if (predTranspose && succTranspose) {
+                    auto predPerm = predTranspose->getPermute();
+                    auto succPerm = succTranspose->getPermute();
+
+                    // 检查两个轴排列是否是相反的
+                    bool isInverse = true;
+                    for (size_t i = 0; i < predPerm.size(); ++i) {
+                        if (predPerm[succPerm[i]] != i) {
+                            isInverse = false;
+                            break;
+                        }
+                    }
+
+                    // 如果是相反的操作，删除它们
+                    if (isInverse) {
+                        auto inputs = op->getInputs();
+                        auto nextOps = succ->getSuccessors();
+                        for(auto input : inputs) {
+                            for(auto nextOp : nextOps) {
+                                nextOp->replaceInput(input, succ->getOutputs()[0]);
+                            }
+                        }
+                        auto succIt = std::find(ops.begin(), ops.end(), succ);
+                        it = ops.erase(it); // 删除第一个 Transpose 操作
+                        if (succIt != ops.end()) {
+                            ops.erase(succIt); // 删除第二个 Transpose 操作
+                        }
+                        if (it != ops.begin()) {
+                            --it; // 调整迭代器以重新检查前一个元素
+                        }
+                    }
                 }
             }
         }
-    
-    
+        //2. 合并matmul和transpose
+        for (auto it = ops.begin(); it != ops.end(); ++it) {
+            auto op = *it;
+            if(op->getOpType() == OpType::Transpose && 
+               op->getSuccessors().size() == 1 &&
+               )
+        
     }
 
     Tensor GraphObj::getTensor(int fuid) const

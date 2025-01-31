@@ -72,9 +72,9 @@ namespace infini
     private:
         void addPredecessors(const Operator &op) { predecessors.emplace_back(op); }
         void addSuccessors(const Operator &op) { successors.emplace_back(op); }
-        void removePredecessors(const Operator &op);
-        void removeSuccessors(const Operator &op);
-        void replaceInput(Tensor t1, Tensor t2);
+        void removePredecessors(const Operator &op); // remove op from predecessors
+        void removeSuccessors(const Operator &op);  // remove op from successors
+        void replaceInput(Tensor t1, Tensor t2);   // replace t1 with t2 in inputs
     };
 
 #define OP_CLONE(OpObj)                                                \
