@@ -35,7 +35,8 @@ namespace infini
         // =================================== 作业 ===================================
         
         // Ensure transposePermute has the same length as the rank of the input tensor
-        IT_ASSERT(transposePermute.size() == rank);
+        // Ensure transposePermute has the same length as the rank of the input tensor
+        IT_ASSERT(transposePermute.size() == static_cast<std::vector<int>::size_type>(rank));
 
         // Ensure all indices in transposePermute are valid
         for (auto index : transposePermute) {

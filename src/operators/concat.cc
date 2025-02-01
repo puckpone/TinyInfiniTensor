@@ -22,11 +22,12 @@ optional<vector<Shape>> ConcatObj::inferShape(const TensorVec &inputs) {
     for(const auto& input : inputs){
         IT_ASSERT(rank == input->getRank());
         auto input_dims = input->getDims();
-        for(int i=0 ; i<rank ; i++)
-            if(i==dim)
+        for(size_t i = 0; i < rank; i++) {
+            if(i == static_cast<size_t>(dim))
                 n += input_dims.at(i);
             else
                 IT_ASSERT(input_dims.at(i) == dims.at(i));
+        }
     }
     dims.at(dim) = n;
     return {{dims}};
