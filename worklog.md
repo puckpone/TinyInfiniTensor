@@ -22,3 +22,19 @@ completed allocator
 complete cast, clip, concat, matmul, transpose.
 
 TODO: learn the graph optimizing rule, through videos and ppts.
+
+# 2.1
+I try so hard😭😭
+
+73% tests passed, 3 tests failed out of 11
+
+Total Test time (real) =   3.54 sec
+
+The following tests FAILED:
+
+          9 - test_nativecpu_concat (Subprocess aborted)
+
+         10 - test_nativecpu_elementwise (SEGFAULT)
+
+         11 - test_nativecpu_transpose (SEGFAULT)
+
