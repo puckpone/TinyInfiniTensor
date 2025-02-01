@@ -14,47 +14,49 @@ namespace infini
         // the tensor
         alignment = sizeof(uint64_t);
     }
-
-    Allocator::~Allocator()
-    {
-        if (this->ptr != nullptr)
-        {
+    Allocator::~Allocator() {
+        if (this->ptr != nullptr) {
             runtime->dealloc(this->ptr);
         }
     }
-
-    size_t Allocator::alloc(size_t size)
-    {
+    // Allocates a block of memory of the given size
+    size_t Allocator::alloc(size_t size) {
+        // Ensure that the pointer is null before allocation
         IT_ASSERT(this->ptr == nullptr);
-        // pad the size to the multiple of alignment
+
+        // Pad the size to the multiple of alignment
         size = this->getAlignedSize(size);
 
-        // Iterate through the free blocks to find a suitable block
-        for (auto it = free_blocks.begin(); it != free_blocks.end(); ++it) {
-            size_t block_start = it->first;
-            size_t block_size = it->second;
-            if (block_size >= size) {
-                // Allocate memory from this block
-                size_t allocated_addr = block_start;
-                // Update the free block map
-                if (block_size > size) {
-                    // Reduce the size of the free block
-                    free_blocks[block_start + size] = block_size - size;
+        // Update the used memory counter
+        this->used += size;
+
+        // Iterate through the list of free blocks to find a suitable block
+        for (auto it = this->free_blocks.begin(); it != this->free_blocks.end(); it++) {
+            // Check if the current block is large enough
+            if (it->second >= size) {
+                size_t addr = it->first; // Address of the free block
+                size_t space = it->second - size; // Remaining space after allocation
+
+                // Remove the current block from the free list
+                this->free_blocks.erase(it);
+
+                // If there is remaining space, add it back to the free list
+                if (space > 0) {
+                    this->free_blocks[addr + size] = space;
                 }
-                free_blocks.erase(it);
-                // Update used memory
-                used += size;
-                if (used > peak) {
-                    peak = used;
-                }
-                return allocated_addr;
+
+                // Return the address of the allocated block
+                return addr;
             }
         }
 
-        // If no suitable block is found, return 0 (or handle out-of-memory case)
-        std::cout << "No suitable block found" << std::endl;
-        return 0;
+        // If no suitable block was found, increase the peak memory usage
+        this->peak += size;
+
+        // Return the address of the newly allocated block
+        return this->peak - size;
     }
+
 
     void Allocator::free(size_t addr, size_t size)
     {

@@ -38,3 +38,7 @@ The following tests FAILED:
 
          11 - test_nativecpu_transpose (SEGFAULT)
 
+---
+all tests passed!
+
+the main reasons are: alloc, dataMalloc
