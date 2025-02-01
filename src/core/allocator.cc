@@ -28,10 +28,8 @@ namespace infini
         IT_ASSERT(this->ptr == nullptr);
         // pad the size to the multiple of alignment
         size = this->getAlignedSize(size);
-        // =================================== 作业 ===================================
-        // TODO: 设计一个算法来分配内存，返回起始地址偏移量
-        // =================================== 作业 ===================================
-        // Naive: Iterate through the free blocks to find a suitable block
+
+        // Iterate through the free blocks to find a suitable block
         for (auto it = free_blocks.begin(); it != free_blocks.end(); ++it) {
             size_t block_start = it->first;
             size_t block_size = it->second;
@@ -52,8 +50,8 @@ namespace infini
                 return allocated_addr;
             }
         }
-        //Red-black tree
-    // If no suitable block is found, return 0 (or handle out-of-memory case)
+
+        // If no suitable block is found, return 0 (or handle out-of-memory case)
         std::cout << "No suitable block found" << std::endl;
         return 0;
     }
@@ -62,12 +60,10 @@ namespace infini
     {
         IT_ASSERT(this->ptr == nullptr);
         size = getAlignedSize(size);
-        
+
         // Update used memory
         used -= size;
-        // =================================== 作业 ===================================
-        // TODO: 设计一个算法来回收内存
-        // =================================== 作业 ===================================
+
         // Add the freed block to the free_blocks map
         auto it = free_blocks.lower_bound(addr); // Find the first block with address >= addr
 
@@ -89,7 +85,6 @@ namespace infini
 
         // Insert the merged block into the free_blocks map
         free_blocks[addr] = size;
-
     }
 
     void *Allocator::getPtr()

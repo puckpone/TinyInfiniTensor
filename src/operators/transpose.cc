@@ -24,8 +24,8 @@ namespace infini
 
     optional<vector<Shape>> TransposeObj::inferShape(const TensorVec &inputs)  
     {
-        const auto A = inputs[0];  //为什么只转置一个Tensor呢？
-        auto input_dim = A->getDims();  
+        const auto A = inputs[0];
+        auto input_dim = A->getDims();
         auto output_dim = input_dim;
         int rank = A->getRank();
 
@@ -33,12 +33,20 @@ namespace infini
         // TODO：修改 output_dim，返回正确的 transpose 后的 shape
         // REF: https://onnx.ai/onnx/operators/onnx__Transpose.html#transpose-21
         // =================================== 作业 ===================================
+        
+        // Ensure transposePermute has the same length as the rank of the input tensor
+        IT_ASSERT(transposePermute.size() == rank);
+
+        // Ensure all indices in transposePermute are valid
         for (auto index : transposePermute) {
             IT_ASSERT(index < rank);
         }
+
+        // Perform the transpose operation
         for (int i = 0; i < rank; ++i) {
             output_dim[i] = input_dim[transposePermute[i]];
         }
+
         return {{output_dim}};
     }
 
