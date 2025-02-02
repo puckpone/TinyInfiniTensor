@@ -26,7 +26,9 @@ namespace infini
 
         // Pad the size to the multiple of alignment
         size = this->getAlignedSize(size);
-
+        // =================================== 作业 ===================================
+        // TODO: 设计一个算法来分配内存，返回起始地址偏移量
+        // =================================== 作业 ===================================
         // Update the used memory counter
         this->used += size;
 
@@ -58,35 +60,30 @@ namespace infini
     }
 
 
-    void Allocator::free(size_t addr, size_t size)
-    {
+    void Allocator::free(size_t addr, size_t size) {
         IT_ASSERT(this->ptr == nullptr);
         size = getAlignedSize(size);
-
-        // Update used memory
-        used -= size;
-
-        // Add the freed block to the free_blocks map
-        auto it = free_blocks.lower_bound(addr); // Find the first block with address >= addr
-
-        // Try to merge with the previous block
-        if (it != free_blocks.begin()) {
-            auto prev = std::prev(it); // Get the previous block
-            if (prev->first + prev->second == addr) {
-                addr = prev->first;
-                size += prev->second;
-                free_blocks.erase(prev);
+        // =================================== 作业 ===================================
+        // TODO: 设计一个算法来回收内存
+        // =================================== 作业 ===================================
+        this->used -= size;
+        if (addr + size == this->peak) {
+            this->peak -= size;
+            return;
+        }
+        for (auto it = this->free_blocks.begin(); it != this->free_blocks.end();
+            it++) {
+            if (it->first + it->second == addr) {
+                it->second += size;
+                return;
+            }
+            if (it->first == addr + size) {
+                this->free_blocks[addr] = size + it->second;
+                this->free_blocks.erase(it);
+                return;
             }
         }
-
-        // Try to merge with the next block
-        if (it != free_blocks.end() && addr + size == it->first) {
-            size += it->second;
-            free_blocks.erase(it);
-        }
-
-        // Insert the merged block into the free_blocks map
-        free_blocks[addr] = size;
+        this->free_blocks[addr] = size;
     }
 
     void *Allocator::getPtr()

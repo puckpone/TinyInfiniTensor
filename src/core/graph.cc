@@ -94,144 +94,100 @@ void GraphObj::optimize() {
     // =================================== 作业 ===================================
     // 使用一个布尔标志位finished，表示当前优化过程是否已完成
     // 若在循环中发现能继续做优化(删除算子/合并算子)，则设finished=false，并再次循环
-    bool finished = false;
-    while (!finished)
-    {
-        finished = true; // 假设本轮没有发生任何优化
+    bool finished = false;   // 标记是否完成所有优化
+    while (!finished) {
+        finished = true;     // 默认假设本轮没有发生任何优化
+        bool needRestart = false; // 标记本轮是否发生了优化，若发生则需要重新扫描
 
-        // 遍历所有算子 (以 prev 这个变量承接)
-        for (auto &&prev : ops)
-        {
-            // 若当前算子不是 Transpose，则略过不处理
+        // 遍历图中所有算子
+        for (auto &&prev : ops) {
+
+            // 若不是 Transpose，则跳过
             if (prev->type != OpType::Transpose)
                 continue;
 
-            // 如果是 Transpose，则查看它的所有后继算子
-            for (auto &&succ_w : prev->successors)
-            {
-                // succ_w 是一个 weak_ptr，需要 lock() 才能获得对应的 shared_ptr
+            // 遍历当前 Transpose 的所有后继算子
+            for (auto &&succ_w : prev->successors) {
                 auto succ = succ_w.lock();
                 if (!succ)
                     continue;
 
-                // ============= 第一种情况：后继也是 Transpose =============
-                // 若两个相邻 Transpose 做的是相同的 perm，则它们等效于“抵消”操作，可一起删除
-                if (succ->type == OpType::Transpose)
-                {
-                    // 转成实际的 TransposeObj
+                // 情况1：后继也是 Transpose，且两者 permute 相同时，相当于抵消，删除
+                if (succ->type == OpType::Transpose) {
                     auto tp_prev = as<TransposeObj>(prev);
                     auto tp_succ = as<TransposeObj>(succ);
 
-                    // 比较二者的 perm
-                    if (tp_prev->getPermute() == tp_succ->getPermute())
-                    {
-                        // 说明这两个 Transpose 连用等效于“恒等变换”，可删掉
-                        finished = false; // 本轮发生了删除，需再继续循环
+                    // 如果 permute 相同，则可删去这两个 Transpose
+                    if (tp_prev->getPermute() == tp_succ->getPermute()) {
+                        finished = false;
+                        needRestart = true;
 
-                        // 对 succ 的所有后继节点 (ss) 进行处理
-                        //   - 把这些后继节点的输入从 succ->outputs[0] 改成 prev->inputs[0]，
-                        //     即“跳过”这两个 Transpose
-                        for (auto &&ss_w : succ->successors)
-                        {
+                        // 处理后继节点的后继（即将其输入指向 prev 的输入）
+                        for (auto &&ss_w : succ->successors) {
                             auto ss = ss_w.lock();
                             if (!ss)
                                 continue;
-
-                            // 遍历后继节点 ss 的所有输入
-                            for (auto &&ss_input : ss->inputs)
-                            {
-                                // 如果该输入本来是 succ->outputs[0] (第二个 Transpose 的输出)，
-                                // 就改成第一个 Transpose 的输入(=真正的原始输入)
-                                if (ss_input == succ->outputs[0])
-                                {
-                                    // 先断开原先张量与ss的连接
+                            for (auto &&ss_input : ss->inputs) {
+                                if (ss_input == succ->outputs[0]) {
                                     ss_input->removeTarget(ss);
-
-                                    // removeTensor(ss_input) 会从图中移除这个中间张量
                                     removeTensor(ss_input);
-
-                                    // 然后把 ss_input 改成 prev->inputs[0]
                                     ss_input = prev->inputs[0];
-
-                                    // 也要把这个新张量跟当前 ss 建立连接
                                     ss_input->removeTarget(prev);
                                     ss_input->addTarget(ss);
                                 }
                             }
-
-                            // 调整前驱后继关系：去除 succ 这个前驱
                             ss->removePredecessors(succ);
-
-                            // 把 prev 的前驱也接到 ss 上
-                            for (auto prev_old_prev_w : prev->predecessors)
-                            {
+                            // 把 prev 的前驱设为此节点的前驱
+                            for (auto prev_old_prev_w : prev->predecessors) {
                                 auto prev_old_prev = prev_old_prev_w.lock();
                                 if (!prev_old_prev)
                                     continue;
-
-                                // 前驱节点不再连到 prev
                                 ss->addPredecessors(prev_old_prev);
                                 prev_old_prev->removeSuccessors(prev);
                                 prev_old_prev->addSuccessors(ss);
                             }
                         }
-
-                        // 把第一个 Transpose 的输出张量删掉
-                        for (auto &&prev_output : prev->outputs)
-                        {
+                        // 删除 prev 的输出张量并删除两个 Transpose 算子
+                        for (auto &&prev_output : prev->outputs) {
                             removeTensor(prev_output);
                         }
-
-                        // 最后，把这两个 Transpose 算子从图中彻底移除
                         removeOperator(prev);
                         removeOperator(succ);
-
-                        // 通过 goto 来跳出最外层的 for 循环，从而回到 while 循环再次扫描
-                        goto next_round;
+                        break; // 退出当前后继循环
                     }
                 }
-                // ============= 第二种情况：后继是 MatMul =============
-                // 如果前驱是 Transpose 且只交换了最后两个维度，那么把它合并进 MatMul 的 transA/transB
-                else if (succ->type == OpType::MatMul)
-                {
-                    // 转成 TransposeObj / MatmulObj
+                // 情况2：后继是 MatMul，且该 Transpose 只交换最后两个维度
+                else if (succ->type == OpType::MatMul) {
                     auto tp_prev = as<TransposeObj>(prev);
                     auto mm_succ = as<MatmulObj>(succ);
 
                     auto perm = tp_prev->getPermute();
                     auto rank = perm.size();
+                    bool valid = true;
 
                     // 检查是否只交换了最后两个维度
-                    bool valid = true;
-                    // 先看前面的维度是否不变
-                    for (size_t i = 0; i < rank - 2; i++)
-                    {
-                        if (perm[i] != static_cast<int>(i))
-                        {
+                    for (size_t i = 0; i < rank - 2; i++) {
+                        if (perm[i] != static_cast<int>(i)) {
                             valid = false;
                             break;
                         }
                     }
-                    // 再看最后两个维度是否是互换
                     valid = valid &&
                             (perm[rank - 2] == static_cast<int>(rank - 1)) &&
                             (perm[rank - 1] == static_cast<int>(rank - 2));
 
-                    if (!valid)
-                    {
-                        std::cout << "GGGGGGG\n";
+                    if (!valid) {
+                        // 删除原有的输出调试信息
                         continue;
                     }
 
-                    // 满足只交换最后两个维度，则可以把这个 transpose 与 matmul 融合
-                    finished = false; // 发生了合并，需再继续循环
-
-                    // 先把 MatMul 从 prev (这个 transpose) 的前驱关系上断开
+                    // 合并到 MatMul 的 transA/transB
+                    finished = false;
+                    needRestart = true;
                     mm_succ->removePredecessors(prev);
 
-                    // 把 prev 的前驱直接连到 MatMul
-                    for (auto &&prev_old_prev_w : tp_prev->predecessors)
-                    {
+                    // 替换前驱关系
+                    for (auto &&prev_old_prev_w : tp_prev->predecessors) {
                         auto prev_old_prev = prev_old_prev_w.lock();
                         if (!prev_old_prev)
                             continue;
@@ -239,41 +195,36 @@ void GraphObj::optimize() {
                         prev_old_prev->addSuccessors(succ);
                         mm_succ->addPredecessors(prev_old_prev);
                     }
-
-                    // 修正 MatMul 的输入 (succ->inputs)
-                    for (auto &&succ_input : succ->inputs)
-                    {
-                        // 如果某个输入是 prev->outputs[0]，就将它替换为 prev->inputs[0]
-                        if (succ_input == prev->outputs[0])
-                        {
-                            // 决定是 transA 还是 transB
+                    // 更新 MatMul 的输入，并设置 transA/transB
+                    for (auto &&succ_input : succ->inputs) {
+                        if (succ_input == prev->outputs[0]) {
                             if (succ_input == succ->inputs[0])
                                 mm_succ->setTransA(!mm_succ->getTransA());
                             if (succ_input == succ->inputs[1])
                                 mm_succ->setTransB(!mm_succ->getTransB());
 
-                            // 修改输入张量引用
                             succ_input = prev->inputs[0];
                             succ_input->removeTarget(prev);
                             succ_input->addTarget(succ);
                         }
                     }
-
-                    // 把 Transpose 的输出张量删除
+                    // 删除该 Transpose 的输出张量以及算子
                     removeTensor(prev->outputs[0]);
-                    // 删除该 Transpose 算子
                     removeOperator(prev);
-
-                    // 跳出 for，回到 while(!finished) 再次扫描
-                    goto next_round;
+                    break; // 退出当前后继循环
                 }
+            }
 
-            } // end for (auto &&succ_w : prev->successors)
-        }     // end for (auto &&prev : ops)
-    next_round:
-        ;
-        // 这里通过 goto + label 的方式进行多轮扫描
-        // 如果上面没有任何优化发生，则 finished 保持 true，循环就会退出
+            // 若本轮已进行优化操作，需要重新扫描，跳出当前for循环
+            if (needRestart) {
+                break;
+            }
+        }
+
+        // 若本轮有优化发生，则继续重新扫描
+        if (needRestart) {
+            continue;
+        }
     }
 }
 
@@ -305,27 +256,36 @@ void GraphObj::shape_infer() {
     }
 }
 
+
 void GraphObj::dataMalloc() {
-    // topological sorting first
+    // 首先进行拓扑排序
     IT_ASSERT(topo_sort() == true);
 
-    // =================================== 作业 ===================================
-    // TODO：利用 allocator 给计算图分配内存
-    // HINT: 获取分配好的内存指针后，可以调用 tensor 的 setDataBlob 函数给tensor 绑定内存
-    // =================================== 作业 ===================================
-    auto n = this->tensors.size();
-    vector<size_t> offsets(n);
-    for (size_t i = 0; i < n; i++) {
-        offsets[i] = this->allocator.alloc(this->tensors[i]->getBytes());
+    // 判断是否需要先为所有张量预分配总内存
+    size_t totalSize = 0;
+    for(auto &tensor : tensors){
+        totalSize += tensor->getBytes();  // 计算总所需内存
     }
-    auto hptr = this->allocator.getPtr();
-    for (size_t i = 0; i < n; i++) {
-        auto ptr = static_cast<char*>(hptr) + offsets[i];
-        auto blob = make_ref<BlobObj>(this->runtime, ptr);
-        this->tensors[i]->setDataBlob(blob);
+    auto basePtr = this->allocator.alloc(totalSize);  // 一次性分配总内存
+    auto hptr = this->allocator.getPtr();  // 获取已分配内存的起始指针
+
+    // 确保内存已成功分配
+    IT_ASSERT(hptr != nullptr);
+
+    // 为每个 tensor 分配内存
+    size_t currentOffset = 0;
+    for(auto &tensor : tensors){
+        auto size = tensor->getBytes();
+        auto blob = make_ref<BlobObj>(this->runtime, static_cast<char*>(hptr) + currentOffset);
+        tensor->setDataBlob(blob);
+        currentOffset += size;  // 更新偏移量
     }
+
+    // 输出内存分配信息
     allocator.info();
 }
+
+
 
 Tensor GraphObj::addTensor(Shape dim, DataType dtype) {
     return tensors.emplace_back(make_ref<TensorObj>(dim, dtype, runtime));
